@@ -6,6 +6,7 @@ package cloud
 
 import (
 	"fmt"
+	"maps"
 	"net/url"
 	"slices"
 	"strings"
@@ -69,6 +70,107 @@ func GetImages(region, osType string) {
 
 	common.ManageListRequestNoExpand(instanceReferenceV2Endpoint(projectID, "image", region),
 		[]string{"id", "name", "location.region region", "osType", "visibility", "status"}, filters)
+}
+
+var ProductAvailabilityFilters struct {
+	Type         string
+	Region       string
+	Name         string
+	NameContains string
+}
+
+func productAvailabilityEndpoint(projectID string) string {
+	endpoint := fmt.Sprintf("/v2/publicCloud/project/%s/reference/productAvailability", projectID)
+
+	query := url.Values{}
+	for key, value := range map[string]string{
+		"type":         ProductAvailabilityFilters.Type,
+		"region":       ProductAvailabilityFilters.Region,
+		"name":         ProductAvailabilityFilters.Name,
+		"nameContains": ProductAvailabilityFilters.NameContains,
+	} {
+		if value != "" {
+			query.Set(key, value)
+		}
+	}
+	if len(query) > 0 {
+		endpoint += "?" + query.Encode()
+	}
+	return endpoint
+}
+
+// ListProductAvailability prints one row per product type, model and location,
+// as the API nests locations inside models inside type groups.
+func ListProductAvailability(_ *cobra.Command, _ []string) {
+	projectID, err := getConfiguredCloudProject()
+	if err != nil {
+		display.OutputError(&flags.OutputFormatConfig, "%s", err)
+		return
+	}
+
+	body, err := httpLib.FetchArray(productAvailabilityEndpoint(projectID), "")
+	if err != nil {
+		display.OutputError(&flags.OutputFormatConfig, "failed to fetch product availability: %s", err)
+		return
+	}
+
+	var rows []map[string]any
+	for _, group := range body {
+		groupMap, _ := group.(map[string]any)
+		models, _ := groupMap["models"].([]any)
+		for _, model := range models {
+			modelMap, _ := model.(map[string]any)
+			locations, _ := modelMap["locations"].([]any)
+			for _, location := range locations {
+				rows = append(rows, map[string]any{
+					"type":     groupMap["type"],
+					"model":    map[string]any{"name": modelMap["name"], "links": modelMap["links"]},
+					"location": location,
+				})
+			}
+		}
+	}
+
+	rows, err = filtersLib.FilterLines(rows, flags.GenericFilters)
+	if err != nil {
+		display.OutputError(&flags.OutputFormatConfig, "failed to filter results: %s", err)
+		return
+	}
+
+	if isPlainTableOutput() {
+		for _, row := range rows {
+			location, _ := row["location"].(map[string]any)
+			row["stock"] = formatStockStatus(location["stockStatus"])
+		}
+	}
+
+	display.RenderTable(rows, []string{
+		"type",
+		"model.name model",
+		"location.name region",
+		"location.regionActivated regionActivated",
+		"location.quotaStatus quotaStatus",
+		"stock",
+	}, &flags.OutputFormatConfig)
+}
+
+// isPlainTableOutput keeps -o json, yaml, interactive and custom formats on the
+// raw API objects: the stock column is a table-only rendering.
+func isPlainTableOutput() bool {
+	config := &flags.OutputFormatConfig
+	return !config.IsJson() && !config.IsYaml() && !config.IsInteractive() && config.CustomFormat() == ""
+}
+
+// formatStockStatus renders location.stockStatus as "zone:STATUS" pairs sorted
+// by zone. A 1AZ region reports its stock under the "region" key.
+func formatStockStatus(stockStatus any) string {
+	byZone, _ := stockStatus.(map[string]any)
+	zones := slices.Sorted(maps.Keys(byZone))
+	pairs := make([]string, 0, len(zones))
+	for _, zone := range zones {
+		pairs = append(pairs, fmt.Sprintf("%s:%v", zone, byZone[zone]))
+	}
+	return strings.Join(pairs, ", ")
 }
 
 func ListContainerRegistryPlans(_ *cobra.Command, _ []string) {

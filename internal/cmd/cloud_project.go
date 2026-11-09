@@ -114,6 +114,7 @@ func init() {
 	initCloudNetworkCommand(cloudCmd)
 	initCloudOperationCommand(cloudCmd)
 	initCloudQuotaCommand(cloudCmd)
+	initCloudReferenceCommand(cloudCmd)
 	initCloudRegionCommand(cloudCmd)
 	initCloudSSHKeyCommand(cloudCmd)
 	initCloudUserCommand(cloudCmd)

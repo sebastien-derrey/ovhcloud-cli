@@ -665,3 +665,116 @@ func (ms *MockSuite) TestCloudReferenceManagedAnalyticsEnginesListCmd(assert, re
 └────────────┴──────────────────────────────────────┴───────────┴───────────┴────────────────┘
 💡 Use option -o json or -o yaml to get the raw output with all information`[1:])
 }
+
+const productAvailabilityResponse = `[
+	{
+		"type": "INSTANCE",
+		"models": [
+			{
+				"name": "b3-8",
+				"links": [{"kind": "SPECS", "href": "/v2/publicCloud/project/fakeProjectID/reference/instance/flavor?name=b3-8"}],
+				"locations": [
+					{
+						"name": "GRA11",
+						"regionActivated": true,
+						"availabilityZones": ["gra11-a"],
+						"stockStatus": {"gra11-a": "AVAILABLE"},
+						"quotaStatus": "SUFFICIENT",
+						"quotaLimitedBy": [],
+						"links": []
+					},
+					{
+						"name": "EU-WEST-PAR",
+						"regionActivated": false,
+						"availabilityZones": ["eu-west-par-a", "eu-west-par-b", "eu-west-par-c"],
+						"stockStatus": {"eu-west-par-a": "AVAILABLE", "eu-west-par-b": "LOW", "eu-west-par-c": "OUT_OF_STOCK"},
+						"quotaStatus": "UNKNOWN",
+						"quotaLimitedBy": [],
+						"links": []
+					}
+				]
+			}
+		]
+	},
+	{
+		"type": "VOLUME",
+		"models": [
+			{
+				"name": "CLASSIC",
+				"links": [{"kind": "SPECS", "href": "/v2/publicCloud/project/fakeProjectID/reference/storage/block/volumeType"}],
+				"locations": [
+					{
+						"name": "GRA11",
+						"regionActivated": true,
+						"availabilityZones": [],
+						"quotaStatus": "INSUFFICIENT",
+						"quotaLimitedBy": ["VOLUME_GIGABYTES"],
+						"links": [{"kind": "QUOTA", "href": "/v2/publicCloud/project/fakeProjectID/quota"}]
+					}
+				]
+			},
+			{
+				"name": "HIGH_SPEED",
+				"links": [],
+				"locations": null
+			}
+		]
+	},
+	{
+		"type": "SWIFT",
+		"models": null
+	}
+]`
+
+func (ms *MockSuite) TestCloudReferenceProductAvailabilityListCmd(assert, require *td.T) {
+	httpmock.RegisterResponder("GET", "https://eu.api.ovh.com/v2/publicCloud/project/fakeProjectID/reference/productAvailability",
+		httpmock.NewStringResponder(200, productAvailabilityResponse).Once())
+
+	out, err := cmd.Execute("cloud", "reference", "product-availability", "list", "--cloud-project", "fakeProjectID")
+
+	require.CmpNoError(err)
+	assert.Cmp(cleanWhitespacesHelper(out), td.Re(`(?s)type\s+│\s+model\s+│\s+region\s+│\s+regionActivated\s+│\s+quotaStatus\s+│\s+stock.*`+
+		`INSTANCE\s+│\s+b3-8\s+│\s+GRA11\s+│\s+true\s+│\s+SUFFICIENT\s+│\s+gra11-a:AVAILABLE.*`+
+		`INSTANCE\s+│\s+b3-8\s+│\s+EU-WEST-PAR\s+│\s+false\s+│\s+UNKNOWN\s+│\s+eu-west-par-a:AVAILABLE, eu-west-par-b:LOW, eu-west-par-c:OUT_OF_STOCK.*`+
+		`VOLUME\s+│\s+CLASSIC\s+│\s+GRA11\s+│\s+true\s+│\s+INSUFFICIENT\s+│`))
+	assert.Cmp(out, td.Not(td.Contains("HIGH_SPEED")))
+	assert.Cmp(out, td.Not(td.Contains("<nil>")))
+}
+
+func (ms *MockSuite) TestCloudReferenceProductAvailabilityListQueryCmd(assert, require *td.T) {
+	httpmock.RegisterResponder("GET", "https://eu.api.ovh.com/v2/publicCloud/project/fakeProjectID/reference/productAvailability?name=b3-8&nameContains=b3&region=gra11&type=INSTANCE",
+		httpmock.NewStringResponder(200, `[{"type": "INSTANCE", "models": []}]`).Once())
+
+	_, err := cmd.Execute("cloud", "reference", "product-availability", "list", "--cloud-project", "fakeProjectID",
+		"--type", "INSTANCE", "--region", "gra11", "--name", "b3-8", "--name-contains", "b3")
+
+	require.CmpNoError(err)
+	assert.Cmp(httpmock.GetCallCountInfo()["GET https://eu.api.ovh.com/v2/publicCloud/project/fakeProjectID/reference/productAvailability?name=b3-8&nameContains=b3&region=gra11&type=INSTANCE"], 1)
+}
+
+func (ms *MockSuite) TestCloudReferenceProductAvailabilityListJSONFilterCmd(assert, require *td.T) {
+	httpmock.RegisterResponder("GET", "https://eu.api.ovh.com/v2/publicCloud/project/fakeProjectID/reference/productAvailability",
+		httpmock.NewStringResponder(200, productAvailabilityResponse).Once())
+
+	out, err := cmd.Execute("cloud", "reference", "product-availability", "list", "--cloud-project", "fakeProjectID",
+		"-o", "json", "--filter", `location.quotaStatus=="INSUFFICIENT"`)
+
+	require.CmpNoError(err)
+	assert.Cmp(json.RawMessage(out), td.JSON(`[
+		{
+			"type": "VOLUME",
+			"model": {
+				"name": "CLASSIC",
+				"links": [{"kind": "SPECS", "href": "/v2/publicCloud/project/fakeProjectID/reference/storage/block/volumeType"}]
+			},
+			"location": {
+				"name": "GRA11",
+				"regionActivated": true,
+				"availabilityZones": [],
+				"quotaStatus": "INSUFFICIENT",
+				"quotaLimitedBy": ["VOLUME_GIGABYTES"],
+				"links": [{"kind": "QUOTA", "href": "/v2/publicCloud/project/fakeProjectID/quota"}]
+			}
+		}
+	]`))
+}

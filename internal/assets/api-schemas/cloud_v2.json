@@ -21200,14 +21200,42 @@
                 "$ref": "#/components/schemas/publicCloud.reference.ProductTypeEnum"
               }
             ],
-            "description": "Product type\n\nThe catalog product family this group describes. Currently only instance offerings are emitted.",
+            "description": "Product type\n\nThe product family this group describes. Groups come in this order: INSTANCE, VOLUME, LOADBALANCER, GATEWAY, FLOATING_IP, PUBLIC_IP, VOLUME_SNAPSHOT, VOLUME_BACKUP, INSTANCE_SNAPSHOT, SHARE, SHARE_SNAPSHOT, OBJECT_STORAGE, SWIFT.",
             "readOnly": true
           }
         }
       },
+      "publicCloud.reference.ProductAvailabilityLink": {
+        "type": "object",
+        "description": "Product availability link (read-only reference data)\n\nA related API v2 operation: what it is (kind) and where to call it (href).",
+        "properties": {
+          "href": {
+            "type": "string",
+            "description": "Path\n\nThe API v2 path to call, including the /v2 prefix and any query string, for example /v2/publicCloud/project/{projectId}/reference/instance/flavor?name=b2-7. Prefix it with the API endpoint the response came from.",
+            "readOnly": true
+          },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/publicCloud.reference.ProductAvailabilityLinkKindEnum"
+              }
+            ],
+            "description": "Kind\n\nWhat the operation is: SPECS returns the technical specifications of the model; QUOTA returns the project's quota in the location.",
+            "readOnly": true
+          }
+        }
+      },
+      "publicCloud.reference.ProductAvailabilityLinkKindEnum": {
+        "type": "string",
+        "description": "Possible values for the kind of a product availability link relative to its object",
+        "enum": [
+          "QUOTA",
+          "SPECS"
+        ]
+      },
       "publicCloud.reference.ProductAvailabilityLocation": {
         "type": "object",
-        "description": "Model location availability (read-only reference data)\n\nDescribes the availability of a compute model in a single location, including its activation state on the project and current stock status. Read-only reference data.",
+        "description": "Model location availability (read-only reference data)\n\nDescribes the availability of a model in a single location: whether the region is activated on the project, stock and quota headroom. Read-only reference data.",
         "properties": {
           "availabilityZones": {
             "type": "array",
@@ -21218,14 +21246,39 @@
             },
             "readOnly": true
           },
-          "enabled": {
-            "type": "boolean",
-            "description": "Enabled\n\nWhether the location is already activated on the project. When false, the model is available in the location but has not yet been activated for the project.",
+          "links": {
+            "type": "array",
+            "description": "Links\n\nRelated operations on the location. When quotaStatus is INSUFFICIENT: a QUOTA link to read the quota of the location. Empty otherwise.",
+            "items": {
+              "$ref": "#/components/schemas/publicCloud.reference.ProductAvailabilityLink"
+            },
             "readOnly": true
           },
           "name": {
             "type": "string",
             "description": "Location name\n\nThe region or location identifier, for example GRA11. Identifies the location within a model availability entry.",
+            "readOnly": true
+          },
+          "quotaLimitedBy": {
+            "type": "array",
+            "description": "Quota limited by\n\nThe quota resources without enough room, when quotaStatus is INSUFFICIENT. Empty otherwise.",
+            "items": {
+              "$ref": "#/components/schemas/publicCloud.reference.ProductAvailabilityQuotaResourceEnum"
+            },
+            "readOnly": true
+          },
+          "quotaStatus": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/publicCloud.reference.ProductAvailabilityQuotaStatusEnum"
+              }
+            ],
+            "description": "Quota status\n\nWhether the project's quota in the location leaves room for one more unit of the model: one instance with its vCPUs and RAM, one volume, volume snapshot or volume backup of 1 GB, one load balancer, gateway or floating IP, one file storage share of the share type's minimum size, one file storage snapshot. SUFFICIENT or INSUFFICIENT is read from the last quota usage snapshot, which can lag a few minutes behind. SUFFICIENT as well for a product with no tracked quota (public IP, instance snapshot, object storage, Swift) in a region activated on the project. UNKNOWN when the region is not activated on the project or no quota usage is known for it.",
+            "readOnly": true
+          },
+          "regionActivated": {
+            "type": "boolean",
+            "description": "Region activated\n\nWhether the region is already activated on the project. When false, the model is sold in the location but the region must be activated on the project before use. This says nothing about stock or quota.",
             "readOnly": true
           },
           "stockStatus": {
@@ -21243,6 +21296,14 @@
         "type": "object",
         "description": "Product model availability (read-only reference data)\n\nDescribes a single offering of a product type and the locations where it is available for the project. Read-only reference data.",
         "properties": {
+          "links": {
+            "type": "array",
+            "description": "Links\n\nRelated operations on the model. A SPECS link points to the reference route listing the technical specifications of the product type: the instance flavor route filtered on the model name, the volume type route, the load balancer flavor route, the gateway model route filtered on the model name, the file storage share type route, or the object storage route. Empty for products without specifications (IPs, snapshots, backups, Swift).",
+            "items": {
+              "$ref": "#/components/schemas/publicCloud.reference.ProductAvailabilityLink"
+            },
+            "readOnly": true
+          },
           "locations": {
             "type": "array",
             "description": "Locations\n\nThe locations where this model is available for the project, each with its activation state. Null or empty when the model is available in no location.",
@@ -21254,16 +21315,57 @@
           },
           "name": {
             "type": "string",
-            "description": "Model name\n\nThe offering name within its product type. For instance the raw flavor name (for example b2-7 or win-b2-7); for gateway the size (s, m, l, xl, 2xl, 3xl); for other products the product name itself.",
+            "description": "Model name\n\nThe offering name within its product type, to use when creating it: the flavor name for an instance (b3-8, win-b3-8) or a load balancer (SMALL to XL), the volume type for a volume (CLASSIC, HIGH_SPEED, HIGH_SPEED_GEN2), the model for a gateway (S to 3XL), the share type for file storage (STANDARD_1AZ), the storage class for object storage (STANDARD, STANDARD_IA, HIGH_PERF, GLACIER_IR, DEEP_ARCHIVE). Products sold as a single model (floating IP, public IP, snapshots, backups, Swift) use their product type as model name.",
             "readOnly": true
           }
         }
+      },
+      "publicCloud.reference.ProductAvailabilityQuotaResourceEnum": {
+        "type": "string",
+        "description": "Possible values for the quota resource that blocks a model in a location",
+        "enum": [
+          "CORES",
+          "FLOATING_IPS",
+          "GATEWAYS",
+          "INSTANCES",
+          "LOADBALANCERS",
+          "RAM",
+          "SHARES",
+          "SHARE_GIGABYTES",
+          "SHARE_SNAPSHOTS",
+          "VOLUMES",
+          "VOLUME_BACKUPS",
+          "VOLUME_BACKUP_GIGABYTES",
+          "VOLUME_GIGABYTES",
+          "VOLUME_SNAPSHOTS"
+        ]
+      },
+      "publicCloud.reference.ProductAvailabilityQuotaStatusEnum": {
+        "type": "string",
+        "description": "Possible values for the quota status of a model in a location",
+        "enum": [
+          "INSUFFICIENT",
+          "SUFFICIENT",
+          "UNKNOWN"
+        ]
       },
       "publicCloud.reference.ProductTypeEnum": {
         "type": "string",
         "description": "Product type of a reference availability entry",
         "enum": [
-          "INSTANCE"
+          "FLOATING_IP",
+          "GATEWAY",
+          "INSTANCE",
+          "INSTANCE_SNAPSHOT",
+          "LOADBALANCER",
+          "OBJECT_STORAGE",
+          "PUBLIC_IP",
+          "SHARE",
+          "SHARE_SNAPSHOT",
+          "SWIFT",
+          "VOLUME",
+          "VOLUME_BACKUP",
+          "VOLUME_SNAPSHOT"
         ]
       },
       "publicCloud.reference.Region": {
@@ -90411,8 +90513,9 @@
     },
     "/publicCloud/project/{projectId}/reference/productAvailability": {
       "get": {
+        "operationId": "getProductAvailability",
         "summary": "Get product availability",
-        "description": "### Product availability\n\nReturns the products available to this Public Cloud project, grouped by product type.\n\nThis is **read-only reference data**: the response is computed from the OVHcloud commercial catalog combined with the project's entitlements. It does not reflect existing resources and triggers no OpenStack call.\n\nThe response is an array with one entry per product type (for example `instance`, `gateway`, `volume`, `loadbalancer`, `kubernetes`). Each type group carries its `models`; each model carries the `locations` where it is available; each location reports its availability zones and an `enabled` flag indicating whether the location is already activated on the project. For the `instance` type only, each location also carries a `stockStatus` reflecting current stock.",
+        "description": "### Product availability\n\nReturns the products available to this Public Cloud project, grouped by product type.\n\nThis is **read-only reference data**: the response is computed from the OVHcloud commercial catalog combined with the project's entitlements and its quota usage. It does not reflect existing resources and triggers no OpenStack call.\n\nThe response is an array with one entry per product type, in this order: `INSTANCE`, `VOLUME`, `LOADBALANCER`, `GATEWAY`, `FLOATING_IP`, `PUBLIC_IP`, `VOLUME_SNAPSHOT`, `VOLUME_BACKUP`, `INSTANCE_SNAPSHOT`, `SHARE`, `SHARE_SNAPSHOT`, `OBJECT_STORAGE`, `SWIFT`. Each type group carries its `models`; each model carries the `locations` where it is sold to the project, in the regions activated on the project and in those the project can activate. Each location reports its availability zones, `regionActivated`, a `quotaStatus` with the quota resources that block it (`quotaLimitedBy`) and, for the `INSTANCE` type only, a `stockStatus` per availability zone.\n\n`links` point to related operations: a `SPECS` link on a model leads to the reference route describing it, and a location whose `quotaStatus` is `INSUFFICIENT` carries a `QUOTA` link.\n\nEvery filter is optional: `type` keeps the group of that product type only, `region` the locations of that region (letter case ignored), `name` the models with exactly that name and `nameContains` the models whose name contains that value (letter case ignored).",
         "security": [
           {
             "oAuth2AuthCode": []
@@ -90436,12 +90539,44 @@
             }
           },
           {
+            "in": "query",
+            "name": "name",
+            "description": "Optional exact model name filter, for example b3-8",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "nameContains",
+            "description": "Optional model name filter keeping the names that contain this value, letter case ignored",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "in": "path",
             "name": "projectId",
             "description": "Project ID",
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "region",
+            "description": "Optional region filter, letter case ignored",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "description": "Optional product type filter",
+            "schema": {
+              "$ref": "#/components/schemas/publicCloud.reference.ProductTypeEnum"
             }
           }
         ],
